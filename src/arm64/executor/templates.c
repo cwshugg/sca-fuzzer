@@ -145,21 +145,42 @@ inline void epilogue(void) {
 #if L1D_ASSOCIATIVITY == 2
 
 // clobber:
-#define PRIME() asm volatile("" \
-    "ldr x2, [x30, #4096]\n" \
-    "ldr x2, [x30, #8192]\n" \
-    "ldr x2, [x30, #12288]\n" \
-    "ldr x2, [x30, #16384]\n" \
+#define PRIME(BASE, OFFSET, TMP, ACC, COUNTER, REPS) asm volatile("" \
+    "isb\n" \
+    "mov "COUNTER", "REPS"\n" \
+    "outer:\n" \
+    "mov "OFFSET", 0\n" \
+    \
+    "inner:\n" \
+    "isb\n" \
+    "add "TMP", "BASE", "OFFSET"\n" \
+    "ldr "ACC", ["TMP", #0]\n" \
+    "isb\n" \
+    "ldr "ACC", ["TMP", #4096]\n" \
+    "isb\n" \
+    "add "OFFSET", "OFFSET", #64\n" \
+    \
+    "mov "ACC", #4096\n" \
+    "cmp "ACC", "OFFSET"\n" \
+    "b.gt inner\n" \
+    \
+    "sub "COUNTER", "COUNTER", #1\n" \
+    "cmp "COUNTER", xzr\n" \
+    "b.ne outer\n" \
+    \
+    "isb\n" \
 )
 
 // clobber:
 #define PROBE() asm volatile("" \
     "mrs x0, PMXEVCNTR_EL0\n" \
-    "ldr x2, [x30, #4096]\n" \
-    "ldr x2, [x30, #8192]\n" \
-    "ldr x2, [x30, #12288]\n" \
-    "ldr x2, [x30, #16384]\n" \
-    "isb\n" \
+    "sub x1, x30, #"xstr(EVICT_REGION_OFFSET)"\n" \
+    "ldr x2, [x1, #4096]\n" \
+    "dsb SY\n" \
+    "ldr x2, [x1, #8192]\n" \
+    "dsb SY\n" \
+    "ldr x2, [x1, #0]\n" \
+    "dsb SY\n" \
     "mrs x1, PMXEVCNTR_EL0\n" \
     "sub x15, x1, x0\n " \
 )
@@ -174,7 +195,7 @@ void template_l1d_prime_probe(void) {
 
     prologue();
 
-    PRIME();
+    PRIME("x0", "x1", "x2", "x3", "x4", "32");
 
     // Initialize registers
     SET_REGISTER_FROM_INPUT();
