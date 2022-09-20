@@ -148,6 +148,8 @@ inline void epilogue(void) {
 #define PRIME() asm volatile("" \
     "ldr x2, [x30, #4096]\n" \
     "ldr x2, [x30, #8192]\n" \
+    "ldr x2, [x30, #12288]\n" \
+    "ldr x2, [x30, #16384]\n" \
 )
 
 // clobber:
@@ -155,6 +157,8 @@ inline void epilogue(void) {
     "mrs x0, PMXEVCNTR_EL0\n" \
     "ldr x2, [x30, #4096]\n" \
     "ldr x2, [x30, #8192]\n" \
+    "ldr x2, [x30, #12288]\n" \
+    "ldr x2, [x30, #16384]\n" \
     "isb\n" \
     "mrs x1, PMXEVCNTR_EL0\n" \
     "sub x15, x1, x0\n " \
