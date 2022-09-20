@@ -148,10 +148,10 @@ inline void epilogue(void) {
 #define PRIME(BASE, OFFSET, TMP, ACC, COUNTER, REPS) asm volatile("" \
     "isb\n" \
     "mov "COUNTER", "REPS"\n" \
-    "outer:\n" \
+    "_arm64_executor_prime_outer:\n" \
     "mov "OFFSET", 0\n" \
     \
-    "inner:\n" \
+    "_arm64_executor_prime_inner:\n" \
     "isb\n" \
     "add "TMP", "BASE", "OFFSET"\n" \
     "ldr "ACC", ["TMP", #0]\n" \
@@ -162,27 +162,48 @@ inline void epilogue(void) {
     \
     "mov "ACC", #4096\n" \
     "cmp "ACC", "OFFSET"\n" \
-    "b.gt inner\n" \
+    "b.gt _arm64_executor_prime_inner\n" \
     \
     "sub "COUNTER", "COUNTER", #1\n" \
     "cmp "COUNTER", xzr\n" \
-    "b.ne outer\n" \
+    "b.ne _arm64_executor_prime_outer\n" \
     \
     "isb\n" \
 )
 
 // clobber:
-#define PROBE() asm volatile("" \
-    "mrs x0, PMXEVCNTR_EL0\n" \
-    "sub x1, x30, #"xstr(EVICT_REGION_OFFSET)"\n" \
-    "ldr x2, [x1, #4096]\n" \
-    "dsb SY\n" \
-    "ldr x2, [x1, #8192]\n" \
-    "dsb SY\n" \
-    "ldr x2, [x1, #0]\n" \
-    "dsb SY\n" \
-    "mrs x1, PMXEVCNTR_EL0\n" \
-    "sub x15, x1, x0\n " \
+#define PROBE(BASE, OFFSET, TMP, TMP2, ACC, DEST) asm volatile("" \
+    "eor "DEST", "DEST", "DEST"\n" \
+    "eor "OFFSET", "OFFSET", "OFFSET"\n" \
+    "_arm64_executor_probe_loop:\n" \
+    \
+    "isb\n" \
+    "eor "TMP", "TMP", "TMP"\n" \
+    "mrs "TMP", PMXEVCNTR_EL0\n" \
+    "mov "ACC", "TMP"\n" \
+    \
+    "add "TMP", "BASE", "OFFSET"\n" \
+    "ldr "TMP2", ["TMP", #0]\n" \
+    "isb\n" \
+    "ldr "TMP2", ["TMP", #4096]\n" \
+    "isb\n" \
+    \
+    "mrs "TMP", PMXEVCNTR_EL0\n" \
+    "subs "ACC", "TMP", "ACC"\n" \
+    "b.eq _arm64_executor_probe_failed\n" \
+    "_arm64_executor_probe_success:\n" \
+    "mov "DEST", "DEST", lsl #1\n" \
+    "orr "DEST", "DEST", #1\n" \
+    "b _arm64_executor_probe_loop_check\n" \
+    \
+    "_arm64_executor_probe_failed:\n" \
+    "mov "DEST", "DEST", lsl #1\n" \
+    \
+    "_arm64_executor_probe_loop_check:\n" \
+    "add "OFFSET", "OFFSET", #64\n" \
+    "mov "TMP", #4096\n" \
+    "cmp "TMP", "OFFSET"\n" \
+    "b.gt _arm64_executor_probe_loop\n" \
 )
 
 #endif
@@ -195,7 +216,7 @@ void template_l1d_prime_probe(void) {
 
     prologue();
 
-    PRIME("x0", "x1", "x2", "x3", "x4", "32");
+    PRIME("x30", "x1", "x2", "x3", "x4", "32");
 
     // Initialize registers
     SET_REGISTER_FROM_INPUT();
@@ -206,7 +227,7 @@ void template_l1d_prime_probe(void) {
         "isb\n");
 
     // Probe and store the resulting eviction bitmap map into x?
-    PROBE();
+    PROBE("x30", "x0", "x1", "x2", "x3", "x15");
 
     epilogue();
     asm volatile(".long "xstr(TEMPLATE_RETURN));
