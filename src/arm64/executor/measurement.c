@@ -149,6 +149,37 @@ int trace_test_case(void)
 ///
 int config_pfc(void)
 {
-    // TBD
+    // PMU enablement
+    asm volatile("" \
+        "mrs x0, PMCR_EL0\n"            // capture old control values
+        "orr x0, x0, #0x01\n"           // set enable-bit
+        "msr PMCR_EL0, x0\n"            // write updated control values
+    );
+
+    // PMU enablement (performance monitors count enable set reg)
+    asm volatile("" \
+        "mrs x0, PMCNTENSET_EL0\n"      // capture old bits
+        "orr x0, x0, #0x01\n"           // set enable bit
+        "msr PMCNTENSET_EL0, x0\n"      // write updated bits
+    );
+
+    // PMU enablement
+    asm volatile("" \
+        "mrs x0, PMUSERENR_EL0\n"       // capture old PMU values
+        "orr x0, x0, #0x01\n"           // set enable-bit
+        "msr PMUSERENR_EL0, x0\n"       // write updated PMU values
+    );
+
+    // PMU configuration (select the event counter we want to read from)
+    asm volatile("" \
+        "mov x0, #0\n"                  // select counter 0 to increment
+        "msr PMSELR_EL0, x0\n"          // write to counter selection register
+    );
+
+    // PMU configuration (select the specific event we want to track)
+    asm volatile("" \
+        "mov x0, #0x03\n"               // write L1D-cache-refill selection
+        "msr PMXEVTYPER_EL0, x0\n"      // write to event selection register
+    );
     return 0;
 }

@@ -145,10 +145,20 @@ inline void epilogue(void) {
 #if L1D_ASSOCIATIVITY == 2
 
 // clobber:
-#define PRIME() ""  // TBD
+#define PRIME() asm volatile("" \
+    "ldr x2, [x30, #4096]\n" \
+    "ldr x2, [x30, #8192]\n" \
+)
 
 // clobber:
-#define PROBE() asm volatile("mov x15, x7\n")  // TBD
+#define PROBE() asm volatile("" \
+    "mrs x0, PMXEVCNTR_EL0\n" \
+    "ldr x2, [x30, #4096]\n" \
+    "ldr x2, [x30, #8192]\n" \
+    "isb\n" \
+    "mrs x1, PMXEVCNTR_EL0\n" \
+    "sub x15, x1, x0\n " \
+)
 
 #endif
 
