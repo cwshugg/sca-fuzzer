@@ -172,6 +172,7 @@ inline void epilogue(void) {
 )
 
 // clobber:
+/*
 #define PROBE(BASE, OFFSET, TMP, TMP2, ACC, DEST) asm volatile("" \
     "eor "DEST", "DEST", "DEST"\n" \
     "eor "OFFSET", "OFFSET", "OFFSET"\n" \
@@ -179,7 +180,7 @@ inline void epilogue(void) {
     \
     "isb\n" \
     "eor "TMP", "TMP", "TMP"\n" \
-    "mrs "TMP", PMXEVCNTR_EL0\n" \
+    "mrs "TMP", pmevcntr0_el0\n" \
     "mov "ACC", "TMP"\n" \
     \
     "add "TMP", "BASE", "OFFSET"\n" \
@@ -188,7 +189,7 @@ inline void epilogue(void) {
     "ldr "TMP2", ["TMP", #4096]\n" \
     "isb\n" \
     \
-    "mrs "TMP", PMXEVCNTR_EL0\n" \
+    "mrs "TMP", pmevcntr0_el0\n" \
     "subs "ACC", "TMP", "ACC"\n" \
     "b.eq _arm64_executor_probe_failed\n" \
     "_arm64_executor_probe_success:\n" \
@@ -204,6 +205,15 @@ inline void epilogue(void) {
     "mov "TMP", #4096\n" \
     "cmp "TMP", "OFFSET"\n" \
     "b.gt _arm64_executor_probe_loop\n" \
+)
+*/
+#define PROBE(BASE, OFFSET, TMP, TMP2, ACC, DEST) asm volatile("" \
+    "mrs "TMP", pmevcntr0_el0\n" \
+    "ldr "ACC", ["BASE", #8192]\n" \
+    "isb\n" \
+    "dsb SY\n" \
+    "mrs "TMP2", pmevcntr0_el0\n" \
+    "sub "DEST", "TMP2", "TMP"\n" \
 )
 
 #endif

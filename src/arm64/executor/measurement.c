@@ -8,6 +8,7 @@
 // clang-format off
 #include <linux/seq_file.h>
 #include <linux/irqflags.h>
+#include <linux/kernel.h>
 // clang-format on
 
 #include "main.h"
@@ -149,6 +150,7 @@ int trace_test_case(void)
 ///
 int config_pfc(void)
 { 
+    /*
     // PMU enablement (user-mode access)
     asm volatile("" \
         "mrs x0, PMUSERENR_EL0\n"       // capture old PMU values
@@ -183,6 +185,53 @@ int config_pfc(void)
         "mov x0, #0\n"                  // select counter 0 to increment
         "msr PMSELR_EL0, x0\n"          // write to counter selection register
     );
+    */
+
+    // enable PMU user-mode access
+    //asm volatile("msr pmuserenr_el0, %0" :: "r" (1));
+    //asm volatile("isb\n");
+
+    printk(KERN_ERR "SETTING UP PMU\n");
+
+    // disable PMU user-mode access
+    asm volatile("msr pmuserenr_el0, %0" :: "r" (0));
+    asm volatile("isb\n");
+
+    // disable PMU counters before selecting the event we want
+    uint64_t val = 0x0;
+    asm volatile("mrs %0, pmcr_el0" : "=r" (val));
+    asm volatile("msr pmcr_el0, %0" :: "r" (0x0));
+    asm volatile("isb\n");
+
+    printk(KERN_ERR "PMCR: 0x%llx\n", val);
+    //printk(KERN_ERR "PMCEID0_EL0: 0x%llx\n", 
+
+    // select the event (0x3 = L1D cache refills)
+    asm volatile("msr pmevtyper0_el0, %0" :: "r" (0x3));
+    asm volatile("isb\n");
+        
+ 
+    // select the PMU counter
+    //asm volatile("msr pmselr_el0, %0" :: "r" (0));
+    //asm volatile("isb\n");
+
+    // reset counters
+    val = 0;
+    asm volatile("mrs %0, pmcr_el0" : "=r" (val));
+    asm volatile("msr pmcr_el0, %0" :: "r" (val | 0x2));
+    asm volatile("isb\n");
+
+    // enable counting
+    val = 0;
+    asm volatile("mrs %0, pmcntenset_el0" : "=r" (val));
+    asm volatile("msr pmcntenset_el0, %0" :: "r" (val | 1));
+    asm volatile("isb\n");
+    
+    // enable PMU counters
+    val = 0;
+    asm volatile("mrs %0, pmcr_el0" : "=r" (val));
+    asm volatile("msr pmcr_el0, %0" :: "r" (val | 0x1));
+    asm volatile("isb\n");
 
     return 0;
 }
