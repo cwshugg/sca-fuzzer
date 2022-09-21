@@ -123,7 +123,7 @@ class ARMExecutor(Executor):
         # merge the results of repeated measurements
         for input_id, input_results in enumerate(all_results):
             # remove outliers and merge hardware traces
-            print(input_results[0])
+            #print(input_results[0])
 
             counter: Counter = Counter()
             for result in input_results:
