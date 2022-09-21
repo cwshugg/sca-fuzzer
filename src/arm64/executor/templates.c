@@ -266,7 +266,7 @@ inline void epilogue(void) {
     \
     "_arm64_executor_reload_loop_check:\n" \
     "add "OFFSET", "OFFSET", #64\n" \
-    "mov "TMP", #4096\n" \
+    "mov "TMP", #"xstr(MAIN_REGION_SIZE)"\n" \
     "cmp "TMP", "OFFSET"\n" \
     "b.gt _arm64_executor_reload_loop\n" \
 )
