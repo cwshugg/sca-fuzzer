@@ -194,17 +194,20 @@ int config_pfc(void)
     printk(KERN_ERR "SETTING UP PMU\n");
 
     // disable PMU user-mode access
-    asm volatile("msr pmuserenr_el0, %0" :: "r" (0));
+    uint64_t val = 0;
+    asm volatile("msr pmuserenr_el0, %0" :: "r" (0x1));
     asm volatile("isb\n");
 
     // disable PMU counters before selecting the event we want
-    uint64_t val = 0x0;
+    val = 0;
     asm volatile("mrs %0, pmcr_el0" : "=r" (val));
     asm volatile("msr pmcr_el0, %0" :: "r" (0x0));
     asm volatile("isb\n");
 
-    printk(KERN_ERR "PMCR: 0x%llx\n", val);
-    //printk(KERN_ERR "PMCEID0_EL0: 0x%llx\n", 
+    // check that the correct event is implemented (debugging)
+    //val = 0;
+    //asm volatile("mrs %0, pmceid0_el0" : "=r" (val));
+    //printk(KERN_ERR "PMCEID0_EL0: 0x%llx\n", val);
 
     // select the event (0x3 = L1D cache refills)
     asm volatile("msr pmevtyper0_el0, %0" :: "r" (0x3));
@@ -215,23 +218,27 @@ int config_pfc(void)
     //asm volatile("msr pmselr_el0, %0" :: "r" (0));
     //asm volatile("isb\n");
 
-    // reset counters
-    val = 0;
-    asm volatile("mrs %0, pmcr_el0" : "=r" (val));
-    asm volatile("msr pmcr_el0, %0" :: "r" (val | 0x2));
-    asm volatile("isb\n");
-
     // enable counting
     val = 0;
-    asm volatile("mrs %0, pmcntenset_el0" : "=r" (val));
-    asm volatile("msr pmcntenset_el0, %0" :: "r" (val | 1));
+    asm volatile("msr pmcntenset_el0, %0" :: "r" (1));
     asm volatile("isb\n");
     
-    // enable PMU counters
+    // enable PMU counters and reset the counters (using two bits)
     val = 0;
     asm volatile("mrs %0, pmcr_el0" : "=r" (val));
-    asm volatile("msr pmcr_el0, %0" :: "r" (val | 0x1));
+    asm volatile("msr pmcr_el0, %0" :: "r" (val | 0x3));
     asm volatile("isb\n");
+    
+    // debug prints (view via 'sudo dmesg')
+    val = 0;
+    asm volatile("mrs %0, pmuserenr_el0" : "=r" (val));
+    printk(KERN_ERR "%-24s 0x%0llx\n", "PMUSERENR_EL0:", val);
+    asm volatile("mrs %0, pmcr_el0" : "=r" (val));
+    printk(KERN_ERR "%-24s 0x%0llx\n", "PMCR_EL0:", val);
+    asm volatile("mrs %0, pmevtyper0_el0" : "=r" (val));
+    printk(KERN_ERR "%-24s 0x%0llx\n", "PMEVTYPER0_EL0:", val);
+    asm volatile("mrs %0, pmcntenset_el0" : "=r" (val));
+    printk(KERN_ERR "%-24s 0x%0llx\n", "PMCNTENSET_EL0:", val);
 
     return 0;
 }
