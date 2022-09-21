@@ -208,15 +208,14 @@ int config_pfc(void)
     //val = 0;
     //asm volatile("mrs %0, pmceid0_el0" : "=r" (val));
     //printk(KERN_ERR "PMCEID0_EL0: 0x%llx\n", val);
+    
+    // select the PMU counter
+    asm volatile("msr pmselr_el0, %0" :: "r" (0));
+    asm volatile("isb\n");
 
     // select the event (0x3 = L1D cache refills)
     asm volatile("msr pmevtyper0_el0, %0" :: "r" (0x3));
     asm volatile("isb\n");
-        
- 
-    // select the PMU counter
-    //asm volatile("msr pmselr_el0, %0" :: "r" (0));
-    //asm volatile("isb\n");
 
     // enable counting
     val = 0;
@@ -235,6 +234,8 @@ int config_pfc(void)
     printk(KERN_ERR "%-24s 0x%0llx\n", "PMUSERENR_EL0:", val);
     asm volatile("mrs %0, pmcr_el0" : "=r" (val));
     printk(KERN_ERR "%-24s 0x%0llx\n", "PMCR_EL0:", val);
+    asm volatile("mrs %0, pmselr_el0" : "=r" (val));
+    printk(KERN_ERR "%-24s 0x%0llx\n", "PMSELR_EL0:", val);
     asm volatile("mrs %0, pmevtyper0_el0" : "=r" (val));
     printk(KERN_ERR "%-24s 0x%0llx\n", "PMEVTYPER0_EL0:", val);
     asm volatile("mrs %0, pmcntenset_el0" : "=r" (val));

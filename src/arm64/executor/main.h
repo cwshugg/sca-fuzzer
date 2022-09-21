@@ -47,7 +47,10 @@ extern measurement_t *measurements;
 #define FAULTY_REGION_SIZE 4096
 #define OVERFLOW_REGION_SIZE 4096
 #define REG_INITIALIZATION_REGION_SIZE 64
-#define EVICT_REGION_SIZE (L1D_ASSOCIATIVITY * 4096)
+#define EVICT_REGION_SIZE (L1D_ASSOCIATIVITY * 16384)
+
+// The RPi4 Cortex-A72 cache is 32KB. So we update the eviction region
+// size (above) to reflect the cache size.
 
 typedef struct Sandbox
 {
