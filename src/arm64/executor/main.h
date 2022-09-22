@@ -23,10 +23,13 @@ extern char *attack_template;
 
 // Attack configuration
 #ifndef L1D_ASSOCIATIVITY
-#error "Undefined associativity"
-#elif L1D_ASSOCIATIVITY != 2
-#warning "Unsupported/corrupted L1D associativity. Falling back to 8-way"
+#warning "Unsupported/undefined L1D associativity. Falling back to 2-way"
 #define L1D_ASSOCIATIVITY 2
+#endif
+
+#ifndef L1D_SIZE
+#warning "Unsupported/undefined L1D size. Falling back to 32KB"
+#define L1D_SIZE 32768
 #endif
 
 // Measurement results
@@ -47,7 +50,8 @@ extern measurement_t *measurements;
 #define FAULTY_REGION_SIZE 4096
 #define OVERFLOW_REGION_SIZE 4096
 #define REG_INITIALIZATION_REGION_SIZE 64
-#define EVICT_REGION_SIZE (L1D_ASSOCIATIVITY * 16384)
+#define EVICT_REGION_SIZE L1D_SIZE
+#define L1D_WAY_SIZE (L1D_SIZE / L1D_ASSOCIATIVITY)
 
 // The RPi4 Cortex-A72 cache is 32KB. So we update the eviction region
 // size (above) to reflect the cache size.
@@ -66,10 +70,10 @@ typedef struct Sandbox
 extern sandbox_t *sandbox;
 extern void *stack_base;
 
-#define REG_INIT_OFFSET 8192 // (MAIN_REGION_SIZE + FAULTY_REGION_SIZE)
+#define REG_INIT_OFFSET (MAIN_REGION_SIZE + FAULTY_REGION_SIZE)
 #define EVICT_REGION_OFFSET (EVICT_REGION_SIZE + OVERFLOW_REGION_SIZE)
-#define RSP_OFFSET 12288 // (MAIN_REGION_SIZE + FAULTY_REGION_SIZE + OVERFLOW_REGION_SIZE)
-#define MEASUREMENT_OFFSET 12296 // RSP_OFFSET + sizeof(stored_rsp)
+#define RSP_OFFSET (MAIN_REGION_SIZE + FAULTY_REGION_SIZE + OVERFLOW_REGION_SIZE)
+#define MEASUREMENT_OFFSET (RSP_OFFSET + 8)
 
 // Test Case
 extern char *test_case;
