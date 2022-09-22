@@ -172,8 +172,6 @@ inline void epilogue(void) {
     "isb; dsb SY\n" \
 )
 
-// clobber:
-/*
 #define PROBE(BASE, OFFSET, TMP, TMP2, ACC, DEST) asm volatile("" \
     "eor "DEST", "DEST", "DEST"\n" \
     "eor "OFFSET", "OFFSET", "OFFSET"\n" \
@@ -208,17 +206,6 @@ inline void epilogue(void) {
     "cmp "TMP", "OFFSET"\n" \
     "b.gt _arm64_executor_probe_loop\n" \
 )
-*/
-#define PROBE(BASE, OFFSET, TMP, TMP2, ACC, DEST) asm volatile("" \
-    "mrs "TMP", pmevcntr0_el0\n" \
-    "sub "TMP2", "BASE", #"xstr(EVICT_REGION_OFFSET)"\n" \
-    "mov x14, #32768\n" \
-    "ldr "ACC", ["TMP2", x14]\n" \
-    "isb; dsb SY\n" \
-    "mrs "TMP2", pmevcntr0_el0\n" \
-    "sub "DEST", "TMP2", "TMP"\n" \
-    "mov "DEST", "TMP2"\n" \
-)
 
 #define FLUSH(BASE, OFFSET, TMP, ACC) asm volatile("" \
     "isb; dsb SY\n" \
@@ -238,7 +225,6 @@ inline void epilogue(void) {
     "isb; dsb SY\n" \
 )
 
-// clobber:
 #define RELOAD(BASE, OFFSET, TMP, TMP2, ACC, DEST) asm volatile("" \
     "eor "DEST", "DEST", "DEST"\n" \
     "eor "OFFSET", "OFFSET", "OFFSET"\n" \
@@ -271,7 +257,6 @@ inline void epilogue(void) {
     "b.gt _arm64_executor_reload_loop\n" \
 )
 
-
 #endif
 
 void template_l1d_prime_probe(void) {
@@ -282,7 +267,31 @@ void template_l1d_prime_probe(void) {
 
     prologue();
 
-    //PRIME("x30", "x1", "x2", "x3", "x4", "32");
+    PRIME("x30", "x1", "x2", "x3", "x4", "32");
+
+    // Initialize registers
+    SET_REGISTER_FROM_INPUT();
+
+    // Execute the test case
+    asm("\nisb\n"
+        ".long "xstr(TEMPLATE_INSERT_TC)" \n"
+        "isb\n");
+
+    // Probe and store the resulting eviction bitmap map into x15
+    PROBE("x30", "x0", "x1", "x2", "x3", "x15");
+
+    epilogue();
+    asm volatile(".long "xstr(TEMPLATE_RETURN));
+}
+
+void template_l1d_flush_reload(void) {
+    asm volatile(".long "xstr(TEMPLATE_ENTER));
+
+    // ensure that we don't crash because of BTI
+    asm volatile("bti c");
+
+    prologue();
+
     FLUSH("x30", "x1", "x2", "x3");
 
     // Initialize registers
@@ -293,8 +302,7 @@ void template_l1d_prime_probe(void) {
         ".long "xstr(TEMPLATE_INSERT_TC)" \n"
         "isb\n");
 
-    // Probe and store the resulting eviction bitmap map into x?
-    //PROBE("x30", "x0", "x1", "x2", "x3", "x15");
+    // Probe and store the resulting eviction bitmap map into x15
     RELOAD("x30", "x0", "x1", "x2", "x3", "x15");
 
     epilogue();

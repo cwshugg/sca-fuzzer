@@ -149,48 +149,7 @@ int trace_test_case(void)
 /// configurations to the corresponding MSRs.
 ///
 int config_pfc(void)
-{ 
-    /*
-    // PMU enablement (user-mode access)
-    asm volatile("" \
-        "mrs x0, PMUSERENR_EL0\n"       // capture old PMU values
-        "orr x0, x0, #0x01\n"           // set enable-bit
-        "msr PMUSERENR_EL0, x0\n"       // write updated PMU values
-    );
-    
-   // PMU configuration (select the specific event we want to track)
-    asm volatile("" \
-        "mov x0, #0x03\n"               // write L1D-cache-refill selection
-        "msr PMXEVTYPER_EL0, x0\n"      // write to event selection register
-    );
- 
-    // PMU enablement (performance monitors count enable set reg)
-    asm volatile("" \
-        "mrs x0, PMCNTENSET_EL0\n"      // capture old bits
-        "mov x1, #0x01\n"               // set up shift target
-        "orr x0, x0, x1, lsl #31\n"     // set enable bit (shift left 31)
-        "orr x0, x0, x1\n"              // set enable bit 2 (?)
-        "msr PMCNTENSET_EL0, x0\n"      // write updated bits
-    );
-
-    // PMU enablement
-    asm volatile("" \
-        "mrs x0, PMCR_EL0\n"            // capture old control values
-        "orr x0, x0, #0x01\n"           // set enable-bit
-        "msr PMCR_EL0, x0\n"            // write updated control values
-    );
-
-    // PMU configuration (select the event counter we want to read from)
-    asm volatile("" \
-        "mov x0, #0\n"                  // select counter 0 to increment
-        "msr PMSELR_EL0, x0\n"          // write to counter selection register
-    );
-    */
-
-    // enable PMU user-mode access
-    //asm volatile("msr pmuserenr_el0, %0" :: "r" (1));
-    //asm volatile("isb\n");
-
+{
     printk(KERN_ERR "SETTING UP PMU\n");
 
     // disable PMU user-mode access
@@ -204,11 +163,6 @@ int config_pfc(void)
     asm volatile("msr pmcr_el0, %0" :: "r" (0x0));
     asm volatile("isb\n");
 
-    // check that the correct event is implemented (debugging)
-    //val = 0;
-    //asm volatile("mrs %0, pmceid0_el0" : "=r" (val));
-    //printk(KERN_ERR "PMCEID0_EL0: 0x%llx\n", val);
-    
     // select the PMU counter
     asm volatile("msr pmselr_el0, %0" :: "r" (0));
     asm volatile("isb\n");
@@ -221,13 +175,13 @@ int config_pfc(void)
     val = 0;
     asm volatile("msr pmcntenset_el0, %0" :: "r" (1));
     asm volatile("isb\n");
-    
+
     // enable PMU counters and reset the counters (using two bits)
     val = 0;
     asm volatile("mrs %0, pmcr_el0" : "=r" (val));
     asm volatile("msr pmcr_el0, %0" :: "r" (val | 0x3));
     asm volatile("isb\n");
-    
+
     // debug prints (view via 'sudo dmesg')
     val = 0;
     asm volatile("mrs %0, pmuserenr_el0" : "=r" (val));
