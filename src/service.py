@@ -202,7 +202,7 @@ class Logger:
             print(f"Duration: {(now - self.start_time).total_seconds():.1f}")
             print(datetime.today().strftime('Finished at %H:%M:%S'))
 
-    def trc_fuzzer_dump_traces(self, model, inputs, htraces, ctraces):
+    def trc_fuzzer_dump_traces(self, model, inputs, htraces, ctraces, hw_feedback):
         if __debug__:
             if self.dbg_traces:
                 print("\n================================ Collected Traces "
@@ -216,6 +216,8 @@ class Logger:
                         print("    ")
                         print(f"CTr{i}: {self.pretty_bitmap(ctraces[i], ctraces[i] > pow(2, 64))}")
                         print(f"HTr{i}: {self.pretty_bitmap(htraces[i])}")
+                        print(f"Feedback{i}: {hw_feedback[i]}")
+
                     return
 
                 org_debug_state = self.dbg_model
@@ -228,6 +230,7 @@ class Logger:
                     print("    ")
                     print(f"CTr{i}: {ctrace_full}")
                     print(f"HTr{i}: {self.pretty_bitmap(htraces[i])}")
+                    print(f"Feedback{i}: {hw_feedback[i]}")
                 self.dbg_model = org_debug_state
 
     def fuzzer_report_violations(self, violation: EquivalenceClass, model):
