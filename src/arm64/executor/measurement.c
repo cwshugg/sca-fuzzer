@@ -150,7 +150,7 @@ int trace_test_case(void)
 ///
 int config_pfc(void)
 {
-    printk(KERN_ERR "SETTING UP PMU\n");
+    // printk(KERN_ERR "SETTING UP PMU\n");
 
     // disable PMU user-mode access
     uint64_t val = 0;
@@ -183,17 +183,17 @@ int config_pfc(void)
     asm volatile("isb\n");
 
     // debug prints (view via 'sudo dmesg')
-    val = 0;
-    asm volatile("mrs %0, pmuserenr_el0" : "=r" (val));
-    printk(KERN_ERR "%-24s 0x%0llx\n", "PMUSERENR_EL0:", val);
-    asm volatile("mrs %0, pmcr_el0" : "=r" (val));
-    printk(KERN_ERR "%-24s 0x%0llx\n", "PMCR_EL0:", val);
-    asm volatile("mrs %0, pmselr_el0" : "=r" (val));
-    printk(KERN_ERR "%-24s 0x%0llx\n", "PMSELR_EL0:", val);
-    asm volatile("mrs %0, pmevtyper0_el0" : "=r" (val));
-    printk(KERN_ERR "%-24s 0x%0llx\n", "PMEVTYPER0_EL0:", val);
-    asm volatile("mrs %0, pmcntenset_el0" : "=r" (val));
-    printk(KERN_ERR "%-24s 0x%0llx\n", "PMCNTENSET_EL0:", val);
+    // val = 0;
+    // asm volatile("mrs %0, pmuserenr_el0" : "=r" (val));
+    // printk(KERN_ERR "%-24s 0x%0llx\n", "PMUSERENR_EL0:", val);
+    // asm volatile("mrs %0, pmcr_el0" : "=r" (val));
+    // printk(KERN_ERR "%-24s 0x%0llx\n", "PMCR_EL0:", val);
+    // asm volatile("mrs %0, pmselr_el0" : "=r" (val));
+    // printk(KERN_ERR "%-24s 0x%0llx\n", "PMSELR_EL0:", val);
+    // asm volatile("mrs %0, pmevtyper0_el0" : "=r" (val));
+    // printk(KERN_ERR "%-24s 0x%0llx\n", "PMEVTYPER0_EL0:", val);
+    // asm volatile("mrs %0, pmcntenset_el0" : "=r" (val));
+    // printk(KERN_ERR "%-24s 0x%0llx\n", "PMCNTENSET_EL0:", val);
 
     return 0;
 }
