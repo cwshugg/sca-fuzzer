@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
 """
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Type
+from typing import List, Tuple, Type, Optional, Set
 
 import copy
 import re
@@ -353,6 +353,7 @@ class DummyTaintTracker(TaintTrackerInterface):
     def get_taint(self) -> InputTaint:
         return InputTaint()
 
+
 # Base class for taint tracking that implements ISA-agnostic tracking.
 class BaseTaintTracker(TaintTrackerInterface):
     strict_undefined: bool = True
@@ -379,7 +380,6 @@ class BaseTaintTracker(TaintTrackerInterface):
     # ISA-specific fields
     _registers = []
 
-
     def __init__(self, initial_observations, sandbox_base=0):
         self.initial_observations = initial_observations
         self.sandbox_base = sandbox_base
@@ -391,8 +391,8 @@ class BaseTaintTracker(TaintTrackerInterface):
 
         # ISA-specific field setup (these must be set within the sub-class's
         # constructor)
-        self.target_desc = None     # unicorn target description
-        self.isa_target_desc = None # x86 target description (class reference)
+        self.target_desc = None  # unicorn target description
+        self.isa_target_desc = None  # target architecture description
 
     def start_instruction(self, instruction):
         """ Collect source and target registers/flags """
@@ -548,6 +548,7 @@ class BaseTaintTracker(TaintTrackerInterface):
                 taint[i] = False
 
         return taint
+
 
 # ==================================================================================================
 # Implementation of Observation Clauses
