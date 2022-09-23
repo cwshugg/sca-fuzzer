@@ -334,6 +334,18 @@ class Instruction:
         # not checking implicit operands -> labels must be explicit
         return None
 
+    def get_imm_operands(self) -> List[ImmediateOperand]:
+        res = []
+        for o in self.implicit_operands:
+            if isinstance(o, ImmediateOperand):
+                res.append(o)
+
+        for o in self.operands:
+            if isinstance(o, RegisterOperand):
+                res.append(o)
+
+        return res
+
 
 class BasicBlock:
     name: str
