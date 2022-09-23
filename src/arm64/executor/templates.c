@@ -219,9 +219,9 @@ void template_l1d_prime_probe(void) {
     SET_REGISTER_FROM_INPUT();
 
     // Execute the test case
-    asm("\nisb\n"
+    asm("\nisb; dsb SY\n"
         ".long "xstr(TEMPLATE_INSERT_TC)" \n"
-        "isb\n");
+        "isb; dsb SY\n");
 
     // Probe and store the resulting eviction bitmap map into x15
     PROBE("x30", "x0", "x1", "x2", "x3", "x15");
@@ -299,9 +299,9 @@ void template_l1d_flush_reload(void) {
     SET_REGISTER_FROM_INPUT();
 
     // Execute the test case
-    asm("\nisb\n"
+    asm("\nisb; dsb SY\n"
         ".long "xstr(TEMPLATE_INSERT_TC)" \n"
-        "isb\n");
+        "isb; dsb SY\n");
 
     // Probe and store the resulting eviction bitmap map into x15
     RELOAD("x30", "x16", "x17", "x18", "x19", "x15");
