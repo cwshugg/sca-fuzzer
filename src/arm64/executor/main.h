@@ -10,6 +10,22 @@
 
 #define DEBUG 0
 
+// Cache configuration
+#ifndef L1D_ASSOCIATIVITY
+#warning "Unsupported/undefined L1D associativity. Falling back to 2-way"
+#define L1D_ASSOCIATIVITY 2
+#endif
+
+#ifdef L1D_SIZE_K
+// the size is kilobytes; transform it into bytes
+#define L1D_SIZE (L1D_SIZE_K * 1024)
+#else
+#warning "Unsupported/undefined L1D size. Falling back to 32KB"
+#define L1D_SIZE 32768
+#endif
+
+#define L1D_CONFLICT_DISTANCE (L1D_SIZE / L1D_ASSOCIATIVITY)
+
 // Executor Configuration Interface
 extern long uarch_reset_rounds;
 #define UARCH_RESET_ROUNDS_DEFAULT 1
@@ -21,20 +37,9 @@ extern char pre_run_flush;
 #define PRE_RUN_FLUSH_DEFAULT 1
 extern char *attack_template;
 
-// Attack configuration
-#ifndef L1D_ASSOCIATIVITY
-#warning "Unsupported/undefined L1D associativity. Falling back to 2-way"
-#define L1D_ASSOCIATIVITY 2
-#endif
-
-#ifndef L1D_SIZE
-#warning "Unsupported/undefined L1D size. Falling back to 32KB"
-#define L1D_SIZE 32768
-#endif
-
 // Measurement results
 #define HTRACE_WIDTH 1
-#define NUM_PFC 0  // Not yet implemented
+#define NUM_PFC 0 // Not yet implemented
 
 typedef struct Measurement
 {
@@ -50,21 +55,20 @@ extern measurement_t *measurements;
 #define FAULTY_REGION_SIZE 4096
 #define OVERFLOW_REGION_SIZE 4096
 #define REG_INITIALIZATION_REGION_SIZE 64
-#define EVICT_REGION_SIZE L1D_SIZE
-#define L1D_WAY_SIZE (L1D_SIZE / L1D_ASSOCIATIVITY)
+#define EVICT_REGION_SIZE (L1D_SIZE)
 
 // The RPi4 Cortex-A72 cache is 32KB. So we update the eviction region
 // size (above) to reflect the cache size.
 
 typedef struct Sandbox
 {
-    char eviction_region[EVICT_REGION_SIZE];  // region used in Prime+Probe for priming
-    char lower_overflow[OVERFLOW_REGION_SIZE];  // zero-initialized region for accidental overflows
-    char main_region[MAIN_REGION_SIZE];  // first input page. does not cause faults
-    char faulty_region[FAULTY_REGION_SIZE];  // second input. causes a (configurable) fault
-    char upper_overflow[OVERFLOW_REGION_SIZE];  // zero-initialized region for accidental overflows
+    char eviction_region[EVICT_REGION_SIZE];   // region used in Prime+Probe for priming
+    char lower_overflow[OVERFLOW_REGION_SIZE]; // zero-initialized region for accidental overflows
+    char main_region[MAIN_REGION_SIZE];        // first input page. does not cause faults
+    char faulty_region[FAULTY_REGION_SIZE];    // second input. causes a (configurable) fault
+    char upper_overflow[OVERFLOW_REGION_SIZE]; // zero-initialized region for accidental overflows
     uint64_t stored_rsp;
-    measurement_t latest_measurement;  // measurement results
+    measurement_t latest_measurement; // measurement results
 } sandbox_t;
 
 extern sandbox_t *sandbox;

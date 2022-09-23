@@ -157,11 +157,11 @@ inline void epilogue(void) {
     "add "TMP", "TMP", "OFFSET"                         \n" \
     "ldr "ACC", ["TMP", #0]                             \n" \
     "isb; dsb SY                                        \n" \
-    "ldr "ACC", ["TMP", #"xstr(L1D_WAY_SIZE)"]          \n" \
+    "ldr "ACC", ["TMP", #"xstr(L1D_CONFLICT_DISTANCE)"] \n" \
     "isb; dsb SY                                        \n" \
     "add "OFFSET", "OFFSET", #64                        \n" \
                                                             \
-    "mov "ACC", #"xstr(L1D_WAY_SIZE)"                   \n" \
+    "mov "ACC", #"xstr(L1D_CONFLICT_DISTANCE)"          \n" \
     "cmp "ACC", "OFFSET"                                \n" \
     "b.gt _arm64_executor_prime_inner                   \n" \
                                                             \
@@ -186,7 +186,7 @@ inline void epilogue(void) {
     "add "TMP", "TMP", "OFFSET"                         \n" \
     "ldr "TMP2", ["TMP", #0]                            \n" \
     "isb; dsb SY                                        \n" \
-    "ldr "TMP2", ["TMP", #"xstr(L1D_WAY_SIZE)"]         \n" \
+    "ldr "TMP2", ["TMP", #"xstr(L1D_CONFLICT_DISTANCE)"]\n" \
     "isb; dsb SY                                        \n" \
                                                             \
     "mrs "TMP", pmevcntr0_el0                           \n" \
@@ -202,7 +202,7 @@ inline void epilogue(void) {
                                                             \
     "_arm64_executor_probe_loop_check:                  \n" \
     "add "OFFSET", "OFFSET", #64                        \n" \
-    "mov "TMP", #4096                                   \n" \ // IMM may need to be L1D_WAY_SIZE
+    "mov "TMP", #"xstr(L1D_CONFLICT_DISTANCE)"          \n" \
     "cmp "TMP", "OFFSET"                                \n" \
     "b.gt _arm64_executor_probe_loop                    \n" \
 )
