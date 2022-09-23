@@ -197,7 +197,7 @@ static ssize_t trace_show(struct kobject *kobj, struct kobj_attribute *attr, cha
             return count; // we will continue in the next call of this function
 
         measurement_t m = measurements[next_measurement_id];
-        retval = sprintf(&buf[count], "%llu\n", m.htrace[0]);
+        retval = sprintf(&buf[count], "%llu, %llu\n", m.htrace[0], m.pfc[0]);
         if (!retval)
             return -1;
         count += retval;

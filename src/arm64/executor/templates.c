@@ -111,8 +111,10 @@ inline void prologue(void)
 
 inline void epilogue(void) {
     asm volatile("" \
-        // store the hardware trace (x15)
-        "str x15, [x30, #"xstr(MEASUREMENT_OFFSET)"]\n"
+        // store the hardware trace (x15) and pfc readings (x20)
+        "mov x16, #"xstr(MEASUREMENT_OFFSET)"\n"
+        "add x16, x16, x30\n"
+        "stp x15, x20, [x16]\n"
 
         // rsp <- stored_rsp
         "ldr x0, [x30, #"xstr(RSP_OFFSET)"]\n"
@@ -138,6 +140,21 @@ inline void epilogue(void) {
     "ldp x6, x7, [sp], #16\n" \
     "msr nzcv, x6\n" \
     "mov sp, x7\n");
+
+
+// clobber: -
+// dest: x20
+#define READ_PFC_START() asm volatile("" \
+    "mov x20, #0 \n" \
+    "isb; dsb SY \n" \
+    "mrs x20, pmevcntr1_el0 \n");
+
+// clobber: x1
+// dest: x20
+#define READ_PFC_END() asm volatile("" \
+    "isb; dsb SY \n" \
+    "mrs x1, pmevcntr1_el0 \n" \
+    "sub x20, x1, x20 \n");
 
 // =================================================================================================
 // L1D Prime+Probe
@@ -295,6 +312,8 @@ void template_l1d_flush_reload(void) {
 
     FLUSH("x30", "x16", "x17");
 
+    READ_PFC_START();
+
     // Initialize registers
     SET_REGISTER_FROM_INPUT();
 
@@ -302,6 +321,8 @@ void template_l1d_flush_reload(void) {
     asm("\nisb; dsb SY\n"
         ".long "xstr(TEMPLATE_INSERT_TC)" \n"
         "isb; dsb SY\n");
+
+    READ_PFC_START();
 
     // Probe and store the resulting eviction bitmap map into x15
     RELOAD("x30", "x16", "x17", "x18", "x19", "x15");

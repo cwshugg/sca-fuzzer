@@ -111,6 +111,7 @@ void run_experiment(long rounds)
         measurement_t result = sandbox->latest_measurement;
         // printk(KERN_ERR "arm64_executor: measurement %llu\n", result.htrace[0]);
         measurements[i_].htrace[0] = result.htrace[0];
+        measurements[i_].pfc[0] = result.pfc[0];
     }
 
     raw_local_irq_restore(flags);
@@ -163,12 +164,13 @@ int config_pfc(void)
     asm volatile("msr pmcr_el0, %0" :: "r" (0x0));
     asm volatile("isb\n");
 
-    // select the PMU counter
-    asm volatile("msr pmselr_el0, %0" :: "r" (0));
+    // select events:
+    // 0x3 = L1D cache refills
+    asm volatile("msr pmevtyper0_el0, %0" :: "r" (0x3));
     asm volatile("isb\n");
 
-    // select the event (0x3 = L1D cache refills)
-    asm volatile("msr pmevtyper0_el0, %0" :: "r" (0x3));
+    // 0x1b = Instruction speculatively executed.
+    asm volatile("msr pmevtyper1_el0, %0" :: "r" (0x1b));
     asm volatile("isb\n");
 
     // enable counting
