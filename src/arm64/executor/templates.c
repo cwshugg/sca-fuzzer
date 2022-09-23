@@ -173,38 +173,35 @@ inline void epilogue(void) {
 )
 
 #define PROBE(BASE, OFFSET, TMP, TMP2, ACC, DEST) asm volatile("" \
-    "eor "DEST", "DEST", "DEST"                         \n" \
-    "eor "OFFSET", "OFFSET", "OFFSET"                   \n" \
-    "_arm64_executor_probe_loop:                        \n" \
+    "eor "DEST", "DEST", "DEST"                           \n" \
+    "eor "OFFSET", "OFFSET", "OFFSET"                     \n" \
+    "_arm64_executor_probe_loop:                          \n" \
+    "  isb; dsb SY                                        \n" \
+    "  eor "TMP", "TMP", "TMP"                            \n" \
+    "  mrs "TMP", pmevcntr0_el0                           \n" \
+    "  mov "ACC", "TMP"                                   \n" \
                                                             \
-    "isb; dsb SY                                        \n" \
-    "eor "TMP", "TMP", "TMP"                            \n" \
-    "mrs "TMP", pmevcntr0_el0                           \n" \
-    "mov "ACC", "TMP"                                   \n" \
+    "  sub "TMP", "BASE", #"xstr(EVICT_REGION_OFFSET)"    \n" \
+    "  add "TMP", "TMP", "OFFSET"                         \n" \
+    "  ldr "TMP2", ["TMP", #0]                            \n" \
+    "  isb; dsb SY                                        \n" \
+    "  ldr "TMP2", ["TMP", #"xstr(L1D_CONFLICT_DISTANCE)"]\n" \
+    "  isb; dsb SY                                        \n" \
                                                             \
-    "sub "TMP", "BASE", #"xstr(EVICT_REGION_OFFSET)"    \n" \
-    "add "TMP", "TMP", "OFFSET"                         \n" \
-    "ldr "TMP2", ["TMP", #0]                            \n" \
-    "isb; dsb SY                                        \n" \
-    "ldr "TMP2", ["TMP", #"xstr(L1D_CONFLICT_DISTANCE)"]\n" \
-    "isb; dsb SY                                        \n" \
-                                                            \
-    "mrs "TMP", pmevcntr0_el0                           \n" \
-    "subs "ACC", "TMP", "ACC"                           \n" \
-    "b.eq _arm64_executor_probe_failed                  \n" \
-    "_arm64_executor_probe_success:                     \n" \
-    "mov "DEST", "DEST", lsl #1                         \n" \
-    "orr "DEST", "DEST", #1                             \n" \
-    "b _arm64_executor_probe_loop_check                 \n" \
-                                                            \
-    "_arm64_executor_probe_failed:                      \n" \
-    "mov "DEST", "DEST", lsl #1                         \n" \
-                                                            \
-    "_arm64_executor_probe_loop_check:                  \n" \
-    "add "OFFSET", "OFFSET", #64                        \n" \
-    "mov "TMP", #"xstr(L1D_CONFLICT_DISTANCE)"          \n" \
-    "cmp "TMP", "OFFSET"                                \n" \
-    "b.gt _arm64_executor_probe_loop                    \n" \
+    "  mrs "TMP", pmevcntr0_el0                           \n" \
+    "  subs "ACC", "TMP", "ACC"                           \n" \
+    "  b.eq _arm64_executor_probe_failed                  \n" \
+    "  _arm64_executor_probe_success:                     \n" \
+    "    mov "DEST", "DEST", lsl #1                       \n" \
+    "    orr "DEST", "DEST", #1                           \n" \
+    "    b _arm64_executor_probe_loop_check               \n" \
+    "  _arm64_executor_probe_failed:                      \n" \
+    "    mov "DEST", "DEST", lsl #1                       \n" \
+    "  _arm64_executor_probe_loop_check:                  \n" \
+    "  add "OFFSET", "OFFSET", #64                        \n" \
+    "  mov "TMP", #"xstr(L1D_CONFLICT_DISTANCE)"          \n" \
+    "  cmp "TMP", "OFFSET"                                \n" \
+    "  b.gt _arm64_executor_probe_loop                    \n" \
 )
 #endif
 
@@ -255,34 +252,35 @@ void template_l1d_prime_probe(void) {
 )
 
 #define RELOAD(BASE, OFFSET, TMP, TMP2, ACC, DEST) asm volatile("" \
-    "eor "DEST", "DEST", "DEST"                         \n" \
-    "eor "OFFSET", "OFFSET", "OFFSET"                   \n" \
+    "mov "OFFSET", #0                                   \n" \
+    "mov "TMP", #0                                      \n" \
+    "mov "TMP2", #0                                     \n" \
+    "mov "ACC", #0                                      \n" \
+    "mov "DEST", #0                                     \n" \
     "_arm64_executor_reload_loop:                       \n" \
+    "  isb; dsb SY                                      \n" \
+    "  mov "TMP", #0                                    \n" \
+    "  mrs "TMP", pmevcntr0_el0                         \n" \
+    "  mov "ACC", "TMP"                                 \n" \
+    "  isb; dsb SY                                      \n" \
                                                             \
-    "isb; dsb SY                                        \n" \
-    "eor "TMP", "TMP", "TMP"                            \n" \
-    "mrs "TMP", pmevcntr0_el0                           \n" \
-    "mov "ACC", "TMP"                                   \n" \
+    "  add "TMP", "BASE", "OFFSET"                      \n" \
+    "  ldr "TMP2", ["TMP", #0]                          \n" \
+    "  isb; dsb SY                                      \n" \
                                                             \
-    "add "TMP", "BASE", "OFFSET"                        \n" \
-    "ldr "TMP2", ["TMP", #0]                            \n" \
-    "isb; dsb SY                                        \n" \
-                                                            \
-    "mrs "TMP", pmevcntr0_el0                           \n" \
-    "subs "ACC", "TMP", "ACC"                           \n" \
-    "b.ne _arm64_executor_reload_failed                 \n" \
-    "_arm64_executor_reload_success:                    \n" \
-    "mov "DEST", "DEST", lsl #1                         \n" \
-    "orr "DEST", "DEST", #1                             \n" \
-    "b _arm64_executor_reload_loop_check                \n" \
-                                                            \
-    "_arm64_executor_reload_failed:                     \n" \
-    "mov "DEST", "DEST", lsl #1                         \n" \
-                                                            \
-    "_arm64_executor_reload_loop_check:                 \n" \
-    "add "OFFSET", "OFFSET", #64                        \n" \
-    "mov "TMP", #"xstr(MAIN_REGION_SIZE)"               \n" \
-    "cmp "TMP", "OFFSET"                                \n" \
+    "  mrs "TMP", pmevcntr0_el0                         \n" \
+    "  subs "ACC", "TMP", "ACC"                         \n" \
+    "  b.ne _arm64_executor_reload_failed               \n" \
+    "  _arm64_executor_reload_success:                  \n" \
+    "    mov "DEST", "DEST", lsl #1                     \n" \
+    "    orr "DEST", "DEST", #1                         \n" \
+    "    b _arm64_executor_reload_loop_check            \n" \
+    "  _arm64_executor_reload_failed:                   \n" \
+    "    mov "DEST", "DEST", lsl #1                     \n" \
+    "  _arm64_executor_reload_loop_check:               \n" \
+    "  add "OFFSET", "OFFSET", #64                      \n" \
+    "  mov "TMP", #"xstr(MAIN_REGION_SIZE)"             \n" \
+    "  cmp "TMP", "OFFSET"                              \n" \
     "b.gt _arm64_executor_reload_loop                   \n" \
 )
 
