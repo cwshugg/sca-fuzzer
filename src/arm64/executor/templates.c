@@ -206,8 +206,37 @@ inline void epilogue(void) {
     "cmp "TMP", "OFFSET"                                \n" \
     "b.gt _arm64_executor_probe_loop                    \n" \
 )
+#endif
 
-#define FLUSH(BASE, OFFSET, TMP, ACC) asm volatile("" \
+void template_l1d_prime_probe(void) {
+    asm volatile(".long "xstr(TEMPLATE_ENTER));
+
+    // ensure that we don't crash because of BTI
+    asm volatile("bti c");
+
+    prologue();
+
+    PRIME("x30", "x1", "x2", "x3", "x4", "32");
+
+    // Initialize registers
+    SET_REGISTER_FROM_INPUT();
+
+    // Execute the test case
+    asm("\nisb\n"
+        ".long "xstr(TEMPLATE_INSERT_TC)" \n"
+        "isb\n");
+
+    // Probe and store the resulting eviction bitmap map into x15
+    PROBE("x30", "x0", "x1", "x2", "x3", "x15");
+
+    epilogue();
+    asm volatile(".long "xstr(TEMPLATE_RETURN));
+}
+
+// =================================================================================================
+// Flush+Reload
+// =================================================================================================
+#define FLUSH(BASE, OFFSET, TMP) asm volatile("" \
     "isb; dsb SY                                        \n" \
     "mov "OFFSET", #0                                   \n" \
     "_arm64_executor_flush_loop:                        \n" \
@@ -218,8 +247,8 @@ inline void epilogue(void) {
     "isb; dsb SY                                        \n" \
     "add "OFFSET", "OFFSET", #64                        \n" \
                                                             \
-    "mov "ACC", #8192                                   \n" \
-    "cmp "ACC", "OFFSET"                                \n" \
+    "mov "TMP", #8192                                   \n" \
+    "cmp "TMP", "OFFSET"                                \n" \
     "b.gt _arm64_executor_flush_loop                    \n" \
                                                             \
     "isb; dsb SY                                        \n" \
@@ -257,32 +286,6 @@ inline void epilogue(void) {
     "b.gt _arm64_executor_reload_loop                   \n" \
 )
 
-#endif
-
-void template_l1d_prime_probe(void) {
-    asm volatile(".long "xstr(TEMPLATE_ENTER));
-
-    // ensure that we don't crash because of BTI
-    asm volatile("bti c");
-
-    prologue();
-
-    PRIME("x30", "x1", "x2", "x3", "x4", "32");
-
-    // Initialize registers
-    SET_REGISTER_FROM_INPUT();
-
-    // Execute the test case
-    asm("\nisb\n"
-        ".long "xstr(TEMPLATE_INSERT_TC)" \n"
-        "isb\n");
-
-    // Probe and store the resulting eviction bitmap map into x15
-    PROBE("x30", "x0", "x1", "x2", "x3", "x15");
-
-    epilogue();
-    asm volatile(".long "xstr(TEMPLATE_RETURN));
-}
 
 void template_l1d_flush_reload(void) {
     asm volatile(".long "xstr(TEMPLATE_ENTER));
@@ -292,7 +295,7 @@ void template_l1d_flush_reload(void) {
 
     prologue();
 
-    FLUSH("x30", "x1", "x2", "x3");
+    FLUSH("x30", "x16", "x17");
 
     // Initialize registers
     SET_REGISTER_FROM_INPUT();
@@ -303,7 +306,7 @@ void template_l1d_flush_reload(void) {
         "isb\n");
 
     // Probe and store the resulting eviction bitmap map into x15
-    RELOAD("x30", "x0", "x1", "x2", "x3", "x15");
+    RELOAD("x30", "x16", "x17", "x18", "x19", "x15");
 
     epilogue();
     asm volatile(".long "xstr(TEMPLATE_RETURN));
