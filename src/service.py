@@ -237,10 +237,10 @@ class Logger:
             print(f" {violation.ctrace} (hash)")
         else:
             if violation.ctrace <= pow(2, 64):
-                print(f"    {violation.ctrace:064b}")
+                print(f"  {violation.ctrace:064b}")
             else:
-                print(f"    {violation.ctrace % MASK_64BIT:064b} [ns]\n"
-                      f"    {(violation.ctrace >> 64) % MASK_64BIT:064b} [s]\n")
+                print(f"  {violation.ctrace % MASK_64BIT:064b} [ns]\n"
+                      f"  {(violation.ctrace >> 64) % MASK_64BIT:064b} [s]\n")
         print("Hardware traces:")
         for htrace, measurements in violation.htrace_map.items():
             inputs = [m.input_id for m in measurements]
