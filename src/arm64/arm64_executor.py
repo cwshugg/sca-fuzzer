@@ -93,7 +93,7 @@ class ARMExecutor(Executor):
                 LOGGER.error("Failure loading inputs!")
 
         # run experiments and load the results
-        all_results: np.ndarray = np.ndarray(shape=(len(inputs), repetitions, 2), dtype=np.uint64)
+        all_results: np.ndarray = np.ndarray(shape=(len(inputs), repetitions, 3), dtype=np.uint64)
         for rep in range(repetitions):
             # executor prints results in reverse, so we begin from the end
             input_id = len(inputs) - 1
@@ -114,6 +114,7 @@ class ARMExecutor(Executor):
 
                     all_results[input_id][rep][0] = int(row[0])
                     all_results[input_id][rep][1] = int(row[1])
+                    all_results[input_id][rep][2] = int(row[2])
                     input_id -= 1
 
         # simple case - no merging required
@@ -122,12 +123,12 @@ class ARMExecutor(Executor):
             return [int(r[0][0]) for r in all_results]
 
         traces = [0 for _ in inputs]
-        pfc_readings: np.ndarray = np.zeros(shape=(len(inputs), 1), dtype=int)
+        pfc_readings: np.ndarray = np.zeros(shape=(len(inputs), 3), dtype=int)
 
         # merge the results of repeated measurements
         for input_id, input_results in enumerate(all_results):
             # find the max value of each perf counter for each input
-            for pfc_id in range(0, 1):
+            for pfc_id in range(0, 2):
                 pfc_readings[input_id][pfc_id] = max([res[pfc_id + 1] for res in input_results])
 
             # remove outliers and merge hardware traces
@@ -140,8 +141,6 @@ class ARMExecutor(Executor):
                     # (i.e., if we can conclude it's not noise)
                     traces[input_id] |= trace
         self.feedback = pfc_readings.tolist()
-
-        # print([r[0] for r in pfc_readings])
         return traces
 
     def read_base_addresses(self):

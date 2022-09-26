@@ -37,7 +37,7 @@ extern char *attack_template;
 
 // Measurement results
 #define HTRACE_WIDTH 1
-#define NUM_PFC 1
+#define NUM_PFC 3
 
 typedef struct Measurement
 {

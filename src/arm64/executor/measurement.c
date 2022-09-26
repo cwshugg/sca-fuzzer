@@ -109,9 +109,10 @@ void run_experiment(long rounds)
 
         // store the measurement results
         measurement_t result = sandbox->latest_measurement;
-        // printk(KERN_ERR "arm64_executor: measurement %llu\n", result.htrace[0]);
         measurements[i_].htrace[0] = result.htrace[0];
         measurements[i_].pfc[0] = result.pfc[0];
+        measurements[i_].pfc[1] = result.pfc[1];
+        measurements[i_].pfc[2] = result.pfc[2];
     }
 
     raw_local_irq_restore(flags);
@@ -155,8 +156,8 @@ int config_pfc(void)
 
     // disable PMU user-mode access
     uint64_t val = 0;
-    asm volatile("msr pmuserenr_el0, %0" :: "r" (0x1));
-    asm volatile("isb\n");
+    // asm volatile("msr pmuserenr_el0, %0" :: "r" (0x1));
+    // asm volatile("isb\n");
 
     // disable PMU counters before selecting the event we want
     val = 0;
@@ -165,17 +166,21 @@ int config_pfc(void)
     asm volatile("isb\n");
 
     // select events:
-    // 0x3 = L1D cache refills
+    // 1. L1D cache refills (0x3)
     asm volatile("msr pmevtyper0_el0, %0" :: "r" (0x3));
     asm volatile("isb\n");
 
-    // 0x1b = Instruction speculatively executed.
-    asm volatile("msr pmevtyper1_el0, %0" :: "r" (0x1b));
+    // 2. Instructions retired (0x08)
+    asm volatile("msr pmevtyper1_el0, %0" :: "r" (0x08));
+    asm volatile("isb\n");
+
+    // 3. Instruction speculatively executed (0x1b)
+    asm volatile("msr pmevtyper2_el0, %0" :: "r" (0x1b));
     asm volatile("isb\n");
 
     // enable counting
     val = 0;
-    asm volatile("msr pmcntenset_el0, %0" :: "r" (1));
+    asm volatile("msr pmcntenset_el0, %0" :: "r" (0b111));
     asm volatile("isb\n");
 
     // enable PMU counters and reset the counters (using two bits)

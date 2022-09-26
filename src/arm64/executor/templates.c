@@ -8,7 +8,9 @@
 // Some of the registers are reserved for a specific purpose and should never be overwritten.
 // These include:
 //   * X15 - hardware trace
-//
+//   * X20 - performance counter 1
+//   * X21 - performance counter 2
+//   * X22 - performance counter 3
 
 #include "main.h"
 #include <linux/string.h>
@@ -110,11 +112,12 @@ inline void prologue(void)
 }
 
 inline void epilogue(void) {
-    asm volatile("" \
+    asm volatile(""
         // store the hardware trace (x15) and pfc readings (x20)
         "mov x16, #"xstr(MEASUREMENT_OFFSET)"\n"
         "add x16, x16, x30\n"
         "stp x15, x20, [x16]\n"
+        "str x21, [x16, #16]\n"
 
         // rsp <- stored_rsp
         "ldr x0, [x30, #"xstr(RSP_OFFSET)"]\n"
@@ -146,15 +149,19 @@ inline void epilogue(void) {
 // dest: x20
 #define READ_PFC_START() asm volatile("" \
     "mov x20, #0 \n" \
+    "mov x21, #0 \n" \
     "isb; dsb SY \n" \
-    "mrs x20, pmevcntr1_el0 \n");
+    "mrs x20, pmevcntr1_el0 \n" \
+    "mrs x21, pmevcntr2_el0 \n");
 
 // clobber: x1
 // dest: x20
 #define READ_PFC_END() asm volatile("" \
     "isb; dsb SY \n" \
     "mrs x1, pmevcntr1_el0 \n" \
-    "sub x20, x1, x20 \n");
+    "sub x20, x1, x20 \n" \
+    "mrs x1, pmevcntr2_el0 \n" \
+    "sub x21, x1, x21 \n");
 
 // =================================================================================================
 // L1D Prime+Probe
@@ -312,17 +319,17 @@ void template_l1d_flush_reload(void) {
 
     FLUSH("x30", "x16", "x17");
 
-    READ_PFC_START();
-
     // Initialize registers
     SET_REGISTER_FROM_INPUT();
+
+    READ_PFC_START();
 
     // Execute the test case
     asm("\nisb; dsb SY\n"
         ".long "xstr(TEMPLATE_INSERT_TC)" \n"
         "isb; dsb SY\n");
 
-    READ_PFC_START();
+    READ_PFC_END();
 
     // Probe and store the resulting eviction bitmap map into x15
     RELOAD("x30", "x16", "x17", "x18", "x19", "x15");
