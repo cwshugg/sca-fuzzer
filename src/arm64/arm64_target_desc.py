@@ -5,8 +5,7 @@ Copyright (C) Microsoft Corporation
 SPDX-License-Identifier: MIT
 """
 from typing import List
-from interfaces import Instruction
-from generator import TargetDesc
+from interfaces import Instruction, TargetDesc
 from model import UnicornTargetDesc
 
 import unicorn.arm64_const as ucc
@@ -78,7 +77,6 @@ class ARMTargetDesc(TargetDesc):
         self.registers[64].append("SP")
         self.registers[64].append("XZR")
 
-        
         # remove blocked registers
         filtered_decoding = {}
         for size, registers in self.registers.items():
