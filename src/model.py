@@ -16,9 +16,9 @@ from unicorn import Uc, UcError, UC_MEM_WRITE, UC_MEM_READ, UC_SECOND_SCALE, UC_
 
 from interfaces import CTrace, TestCase, Model, InputTaint, Instruction, ExecutionTrace, \
      TracedInstruction, TracedMemAccess, Input, Dict, \
-     RegisterOperand, FlagsOperand, MemoryOperand
+     RegisterOperand, FlagsOperand, MemoryOperand, TaintTrackerInterface, TargetDesc
 from config import CONF
-from service import LOGGER
+from service import LOGGER, NotSupportedException
 
 
 # ==================================================================================================
@@ -312,50 +312,212 @@ class UnicornModel(Model, ABC):
 
 
 # ==================================================================================================
-# Tainting
+# Implementation of Observation Clauses
 # ==================================================================================================
-class TaintTrackerInterface(ABC):
+class L1DTracer(UnicornTracer):
 
-    def __init__(self, initial_observations, sandbox_base=0):
-        pass
+    def reset_trace(self, _, __):
+        self.trace = [0, 0]
+        self.execution_trace = []
 
-    def start_instruction(self, instruction: Instruction) -> None:
-        pass
+    def add_mem_address_to_trace(self, address, model):
+        page_offset = (address & 0b111111000000) >> 6
+        cache_set_index = 0x8000000000000000 >> page_offset
+        # print(f"{cache_set_index:064b}")
+        if model.in_speculation:
+            self.trace[1] |= cache_set_index
+        else:
+            self.trace[0] |= cache_set_index
+        model.taint_tracker.taint_memory_access_address()
 
-    def track_memory_access(self, address: int, size: int, is_write: bool) -> None:
-        pass
+    def observe_mem_access(self, access, address, size, value, model):
+        self.add_mem_address_to_trace(address, model)
+        super(L1DTracer, self).observe_mem_access(access, address, size, value, model)
 
-    def taint_pc(self):
-        pass
+    def observe_instruction(self, address: int, size: int, model):
+        super(L1DTracer, self).observe_instruction(address, size, model)
 
-    def taint_memory_access_address(self):
-        pass
+    def get_contract_trace(self) -> CTrace:
+        return (self.trace[1] << 64) + self.trace[0]
 
-    def taint_memory_load(self):
-        pass
 
-    def taint_memory_store(self):
-        pass
+class PCTracer(UnicornTracer):
+    """
+    Program counter tracer
+    """
 
-    def checkpoint(self):
-        pass
+    def observe_instruction(self, address: int, size: int, model):
+        self.add_pc_to_trace(address, model)
+        super(PCTracer, self).observe_instruction(address, size, model)
+
+
+class MemoryTracer(UnicornTracer):
+
+    def observe_mem_access(self, access, address, size, value, model):
+        self.add_mem_address_to_trace(address, model)
+        super(MemoryTracer, self).observe_mem_access(access, address, size, value, model)
+
+
+class CTTracer(PCTracer):
+    """
+    Observe address of the memory access and of the program counter.
+    """
+
+    def observe_mem_access(self, access, address, size, value, model):
+        self.add_mem_address_to_trace(address, model)
+        super(CTTracer, self).observe_mem_access(access, address, size, value, model)
+
+
+class CTNonSpecStoreTracer(PCTracer):
+    """
+    Observe address of memory access only if not in speculation or it is a read.
+    """
+
+    def observe_mem_access(self, access, address, size, value, model):
+        # trace all non-spec mem accesses and speculative loads
+        if not model.in_speculation or access == UC_MEM_READ:
+            self.add_mem_address_to_trace(address, model)
+        super(CTNonSpecStoreTracer, self).observe_mem_access(access, address, size, value, model)
+
+
+class CTRTracer(CTTracer):
+    """
+    When execution starts we also observe registers state.
+    """
+
+    def reset_trace(self, emulator: Uc, target_desc: UnicornTargetDesc):
+        self.trace = [emulator.reg_read(reg) for reg in target_desc.registers]
+        self.execution_trace = []
+
+
+class ArchTracer(CTRTracer):
+    """
+    Observe (also) the value loaded from memory
+    """
+
+    def observe_mem_access(self, access, address, size, value, model: UnicornModel):
+        if access == UC_MEM_READ:
+            val = int.from_bytes(model.emulator.mem_read(address, size), byteorder='little')
+            self.trace.append(val)
+            model.taint_tracker.taint_memory_load()
+        super(ArchTracer, self).observe_mem_access(access, address, size, value, model)
+
+
+# ==================================================================================================
+# Implementation of Execution Clauses
+# ==================================================================================================
+
+
+class UnicornSeq(UnicornModel):
+    """
+    A simple, in-order contract.
+    The only thing it does is tracing.
+    No manipulation of the control or data flow.
+    """
+
+    @staticmethod
+    def trace_instruction(_, address, size, model) -> None:
+        model.taint_tracker.start_instruction(model.current_instruction)
+        model.tracer.observe_instruction(address, size, model)
+
+    @staticmethod
+    def trace_mem_access(_, access, address: int, size, value, model):
+        model.taint_tracker.track_memory_access(address, size, access == UC_MEM_WRITE)
+        model.tracer.observe_mem_access(access, address, size, value, model)
+
+
+class UnicornSpec(UnicornModel):
+    """
+    Intermediary class for all speculative contracts.
+    """
+
+    def __init__(self, *args):
+        self.checkpoints = []
+        self.store_logs = []
+        self.previous_store = (0, 0, 0, 0)
+        self.latest_rollback_address = 0
+        super().__init__(*args)
+
+    @staticmethod
+    def trace_mem_access(emulator, access, address, size, value, model) -> None:
+        # when in speculation, log all changes to memory
+        if access == UC_MEM_WRITE and model.store_logs:
+            model.store_logs[-1].append((address, emulator.mem_read(address, 8)))
+
+        UnicornSeq.trace_mem_access(emulator, access, address, size, value, model)
+        model.speculate_mem_access(emulator, access, address, size, value, model)
+
+    @staticmethod
+    def trace_instruction(emulator, address, size, model: UnicornModel) -> None:
+        if model.in_speculation:
+            model.speculation_window += 1
+            # rollback on a serializing instruction
+            if model.current_instruction.name in model.target_desc.barriers:
+                emulator.emu_stop()
+
+            # and on expired speculation window
+            if model.speculation_window > CONF.model_max_spec_window:
+                emulator.emu_stop()
+
+        UnicornSeq.trace_instruction(emulator, address, size, model)
+        model.speculate_instruction(emulator, address, size, model)
+
+    def checkpoint(self, emulator: Uc, next_instruction):
+        flags = emulator.reg_read(self.target_desc.flags_register)
+        context = emulator.context_save()
+        spec_window = self.speculation_window
+        self.checkpoints.append((context, next_instruction, flags, spec_window))
+        self.store_logs.append([])
+        self.in_speculation = True
+        self.taint_tracker.checkpoint()
 
     def rollback(self):
-        pass
+        # restore register values
+        state, next_instr, flags, spec_window = self.checkpoints.pop()
+        if not self.checkpoints:
+            self.in_speculation = False
 
-    @abstractmethod
-    def get_taint(self) -> InputTaint:
-        pass
+        LOGGER.dbg_model_rollback(next_instr, self.code_start)
+        self.latest_rollback_address = next_instr
+
+        # restore the speculation state
+        self.emulator.context_restore(state)
+        self.speculation_window = spec_window
+
+        # rollback memory changes
+        mem_changes = self.store_logs.pop()
+        while mem_changes:
+            addr, val = mem_changes.pop()
+            self.emulator.mem_write(addr, bytes(val))
+
+        # if there are any pending speculative store bypasses, cancel them
+        self.previous_store = (0, 0, 0, 0)
+
+        # restore the flags last, to avoid corruption by other operations
+        self.emulator.reg_write(self.target_desc.flags_register, flags)
+
+        # restore the taint tracking
+        self.taint_tracker.rollback()
+
+        # restart without misprediction
+        self.emulator.emu_start(next_instr, self.code_end, timeout=10 * UC_SECOND_SCALE)
+
+    def reset_model(self):
+        super().reset_model()
+        self.latest_rollback_address = 0
 
 
+# ==================================================================================================
+# Implementation of Tainting
+# ==================================================================================================
 class DummyTaintTracker(TaintTrackerInterface):
 
     def get_taint(self) -> InputTaint:
         return InputTaint()
 
 
-# Base class for taint tracking that implements ISA-agnostic tracking.
 class BaseTaintTracker(TaintTrackerInterface):
+    """ Base class for taint tracking that implements ISA-agnostic tracking """
     strict_undefined: bool = True
     _instruction: Optional[Instruction] = None
     sandbox_base: int = 0
@@ -378,7 +540,9 @@ class BaseTaintTracker(TaintTrackerInterface):
     pending_taint: List[str]
 
     # ISA-specific fields
-    _registers = []
+    unicorn_target_desc: UnicornTargetDesc
+    target_desc: TargetDesc
+    _registers: List[int]
 
     def __init__(self, initial_observations, sandbox_base=0):
         self.initial_observations = initial_observations
@@ -388,11 +552,6 @@ class BaseTaintTracker(TaintTrackerInterface):
         self.mem_dependencies = {}
         self.tainted_labels = set(self.initial_observations)
         self.checkpoints = []
-
-        # ISA-specific field setup (these must be set within the sub-class's
-        # constructor)
-        self.target_desc = None  # unicorn target description
-        self.isa_target_desc = None  # target architecture description
 
     def start_instruction(self, instruction):
         """ Collect source and target registers/flags """
@@ -411,7 +570,7 @@ class BaseTaintTracker(TaintTrackerInterface):
 
         for op in instruction.get_all_operands():
             if isinstance(op, RegisterOperand):
-                value = self.isa_target_desc.gpr_normalized[op.value]
+                value = self.target_desc.gpr_normalized[op.value]
                 if op.src:
                     self.src_regs.append(value)
                 if op.dest:
@@ -423,8 +582,8 @@ class BaseTaintTracker(TaintTrackerInterface):
                 self.dest_flags = op.get_write_flags()
             elif isinstance(op, MemoryOperand):
                 for sub_op in re.split(r'\+|-|\*| ', op.value):
-                    if sub_op and sub_op in self.isa_target_desc.gpr_normalized:
-                        self.mem_address_regs.append(self.isa_target_desc.gpr_normalized[sub_op])
+                    if sub_op and sub_op in self.target_desc.gpr_normalized:
+                        self.mem_address_regs.append(self.target_desc.gpr_normalized[sub_op])
 
     def _finalize_instruction(self):
         """Propagate dependencies from source operands to destinations """
@@ -532,10 +691,10 @@ class BaseTaintTracker(TaintTrackerInterface):
                 # we taint the 64-bits block that contains the address
                 input_offset = (int(label, 16)) // 8
             else:
-                reg = self.target_desc.reg_decode[label]
+                reg = self.unicorn_target_desc.reg_decode[label]
                 if reg in self._registers:
                     input_offset = register_start + \
-                          self._registers.index(self.target_desc.reg_decode[label])
+                          self._registers.index(self.unicorn_target_desc.reg_decode[label])
             if input_offset >= 0:
                 tainted_positions.append(input_offset)
 
@@ -548,200 +707,3 @@ class BaseTaintTracker(TaintTrackerInterface):
                 taint[i] = False
 
         return taint
-
-
-# ==================================================================================================
-# Implementation of Observation Clauses
-# ==================================================================================================
-class L1DTracer(UnicornTracer):
-
-    def reset_trace(self, _, __):
-        self.trace = [0, 0]
-        self.execution_trace = []
-
-    def add_mem_address_to_trace(self, address, model):
-        page_offset = (address & 0b111111000000) >> 6
-        cache_set_index = 0x8000000000000000 >> page_offset
-        # print(f"{cache_set_index:064b}")
-        if model.in_speculation:
-            self.trace[1] |= cache_set_index
-        else:
-            self.trace[0] |= cache_set_index
-        model.taint_tracker.taint_memory_access_address()
-
-    def observe_mem_access(self, access, address, size, value, model):
-        self.add_mem_address_to_trace(address, model)
-        super(L1DTracer, self).observe_mem_access(access, address, size, value, model)
-
-    def observe_instruction(self, address: int, size: int, model):
-        super(L1DTracer, self).observe_instruction(address, size, model)
-
-    def get_contract_trace(self) -> CTrace:
-        return (self.trace[1] << 64) + self.trace[0]
-
-
-class PCTracer(UnicornTracer):
-    """
-    Program counter tracer
-    """
-
-    def observe_instruction(self, address: int, size: int, model):
-        self.add_pc_to_trace(address, model)
-        super(PCTracer, self).observe_instruction(address, size, model)
-
-
-class MemoryTracer(UnicornTracer):
-
-    def observe_mem_access(self, access, address, size, value, model):
-        self.add_mem_address_to_trace(address, model)
-        super(MemoryTracer, self).observe_mem_access(access, address, size, value, model)
-
-
-class CTTracer(PCTracer):
-    """
-    Observe address of the memory access and of the program counter.
-    """
-
-    def observe_mem_access(self, access, address, size, value, model):
-        self.add_mem_address_to_trace(address, model)
-        super(CTTracer, self).observe_mem_access(access, address, size, value, model)
-
-
-class CTNonSpecStoreTracer(PCTracer):
-    """
-    Observe address of memory access only if not in speculation or it is a read.
-    """
-
-    def observe_mem_access(self, access, address, size, value, model):
-        # trace all non-spec mem accesses and speculative loads
-        if not model.in_speculation or access == UC_MEM_READ:
-            self.add_mem_address_to_trace(address, model)
-        super(CTNonSpecStoreTracer, self).observe_mem_access(access, address, size, value, model)
-
-
-class CTRTracer(CTTracer):
-    """
-    When execution starts we also observe registers state.
-    """
-
-    def reset_trace(self, emulator: Uc, target_desc: UnicornTargetDesc):
-        self.trace = [emulator.reg_read(reg) for reg in target_desc.registers]
-        self.execution_trace = []
-
-
-class ArchTracer(CTRTracer):
-    """
-    Observe (also) the value loaded from memory
-    """
-
-    def observe_mem_access(self, access, address, size, value, model: UnicornModel):
-        if access == UC_MEM_READ:
-            val = int.from_bytes(model.emulator.mem_read(address, size), byteorder='little')
-            self.trace.append(val)
-            model.taint_tracker.taint_memory_load()
-        self.add_mem_address_to_trace(address, model)
-        super(ArchTracer, self).observe_mem_access(access, address, size, value, model)
-
-
-# ==================================================================================================
-# Implementation of Execution Clauses
-# ==================================================================================================
-
-
-class UnicornSeq(UnicornModel):
-    """
-    A simple, in-order contract.
-    The only thing it does is tracing.
-    No manipulation of the control or data flow.
-    """
-
-    @staticmethod
-    def trace_instruction(_, address, size, model) -> None:
-        model.taint_tracker.start_instruction(model.current_instruction)
-        model.tracer.observe_instruction(address, size, model)
-
-    @staticmethod
-    def trace_mem_access(_, access, address: int, size, value, model):
-        model.taint_tracker.track_memory_access(address, size, access == UC_MEM_WRITE)
-        model.tracer.observe_mem_access(access, address, size, value, model)
-
-
-class UnicornSpec(UnicornModel):
-    """
-    Intermediary class for all speculative contracts.
-    """
-
-    def __init__(self, *args):
-        self.checkpoints = []
-        self.store_logs = []
-        self.previous_store = (0, 0, 0, 0)
-        self.latest_rollback_address = 0
-        super().__init__(*args)
-
-    @staticmethod
-    def trace_mem_access(emulator, access, address, size, value, model) -> None:
-        # when in speculation, log all changes to memory
-        if access == UC_MEM_WRITE and model.store_logs:
-            model.store_logs[-1].append((address, emulator.mem_read(address, 8)))
-
-        UnicornSeq.trace_mem_access(emulator, access, address, size, value, model)
-        model.speculate_mem_access(emulator, access, address, size, value, model)
-
-    @staticmethod
-    def trace_instruction(emulator, address, size, model: UnicornModel) -> None:
-        if model.in_speculation:
-            model.speculation_window += 1
-            # rollback on a serializing instruction
-            if model.current_instruction.name in model.target_desc.barriers:
-                emulator.emu_stop()
-
-            # and on expired speculation window
-            if model.speculation_window > CONF.model_max_spec_window:
-                emulator.emu_stop()
-
-        UnicornSeq.trace_instruction(emulator, address, size, model)
-        model.speculate_instruction(emulator, address, size, model)
-
-    def checkpoint(self, emulator: Uc, next_instruction):
-        flags = emulator.reg_read(self.target_desc.flags_register)
-        context = emulator.context_save()
-        spec_window = self.speculation_window
-        self.checkpoints.append((context, next_instruction, flags, spec_window))
-        self.store_logs.append([])
-        self.in_speculation = True
-        self.taint_tracker.checkpoint()
-
-    def rollback(self):
-        # restore register values
-        state, next_instr, flags, spec_window = self.checkpoints.pop()
-        if not self.checkpoints:
-            self.in_speculation = False
-
-        LOGGER.dbg_model_rollback(next_instr, self.code_start)
-        self.latest_rollback_address = next_instr
-
-        # restore the speculation state
-        self.emulator.context_restore(state)
-        self.speculation_window = spec_window
-
-        # rollback memory changes
-        mem_changes = self.store_logs.pop()
-        while mem_changes:
-            addr, val = mem_changes.pop()
-            self.emulator.mem_write(addr, bytes(val))
-
-        # if there are any pending speculative store bypasses, cancel them
-        self.previous_store = (0, 0, 0, 0)
-
-        # restore the flags last, to avoid corruption by other operations
-        self.emulator.reg_write(self.target_desc.flags_register, flags)
-
-        # restore the taint tracking
-        self.taint_tracker.rollback()
-
-        # restart without misprediction
-        self.emulator.emu_start(next_instr, self.code_end, timeout=10 * UC_SECOND_SCALE)
-
-    def reset_model(self):
-        super().reset_model()
-        self.latest_rollback_address = 0
