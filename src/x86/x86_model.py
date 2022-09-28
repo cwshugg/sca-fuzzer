@@ -4,15 +4,14 @@ File: x86-specific model implementation
 Copyright (C) Microsoft Corporation
 SPDX-License-Identifier: MIT
 """
-import re
 import numpy as np
-from typing import List, Tuple, Dict, Optional, Set
+from typing import Tuple, Dict
 
 import unicorn.x86_const as ucc
 from unicorn import Uc, UC_MEM_WRITE, UC_ARCH_X86, UC_MODE_64
 
 from interfaces import Input
-from model import UnicornModel, UnicornSpec, UnicornSeq, BaseTaintTracker
+from model import UnicornModel, UnicornSpec, UnicornSeq, UnicornBpas, BaseTaintTracker
 from x86.x86_target_desc import X86UnicornTargetDesc, X86TargetDesc
 
 FLAGS_CF = 0b000000000001
@@ -218,42 +217,8 @@ class X86UnicornCond(X86UnicornSpec):
         pass  # cond does not need to speculate mem accesses
 
 
-class X86UnicornBpas(X86UnicornSpec):
-
-    @staticmethod
-    def speculate_mem_access(emulator, access, address, size, value, model):
-        """
-        Since Unicorn does not have post-instruction hooks,
-        I have to implement it in a dirty way:
-        Save the information about the store here, but execute all the
-        contract logic in a hook before the next instruction (see trace_instruction)
-        """
-        if access == UC_MEM_WRITE:
-            rip = emulator.reg_read(ucc.UC_X86_REG_RIP)
-            opcode = emulator.mem_read(rip, 1)[0]
-            if opcode not in [0xE8, 0xFF, 0x9A]:  # ignore CALL instructions
-                model.previous_store = (address, size, emulator.mem_read(address, size), value)
-
-    @staticmethod
-    def speculate_instruction(emulator: Uc, address, _, model) -> None:
-        # reached max spec. window? skip
-        if len(model.checkpoints) >= model.nesting:
-            return
-
-        if model.previous_store[0]:
-            store_addr = model.previous_store[0]
-            old_value = bytes(model.previous_store[2])
-            new_is_signed = model.previous_store[3] < 0
-            new_value = (model.previous_store[3]). \
-                to_bytes(model.previous_store[1], byteorder='little', signed=new_is_signed)
-
-            # store a checkpoint
-            model.checkpoint(emulator, address)
-
-            # cancel the previous store but preserve its value
-            emulator.mem_write(store_addr, old_value)
-            model.store_logs[-1].append((store_addr, new_value))
-        model.previous_store = (0, 0, 0, 0)
+class X86UnicornBpas(UnicornBpas, X86UnicornModel):
+    pass
 
 
 class X86UnicornNull(X86UnicornSpec):
@@ -292,7 +257,7 @@ class X86UnicornNull(X86UnicornSpec):
 class X86UnicornCondBpas(X86UnicornSpec):
 
     @staticmethod
-    def speculate_mem_access(emulator, access, address, size, value, model):
+    def speculate_mem_access(emulator, access, address, size, value, model: UnicornSpec):
         X86UnicornBpas.speculate_mem_access(emulator, access, address, size, value, model)
 
     @staticmethod
@@ -315,6 +280,5 @@ class X86TaintTracker(BaseTaintTracker):
         super().__init__(initial_observations, sandbox_base=sandbox_base)
 
         # ISA-specific field setup
-        self.target_desc = X86UnicornTargetDesc()
-        self.isa_target_desc = X86TargetDesc
-
+        self.target_desc = X86TargetDesc()
+        self.unicorn_target_desc = X86UnicornTargetDesc()
