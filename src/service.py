@@ -263,9 +263,9 @@ class Logger:
             for htrace, measurements in violation.htrace_map.items():
                 print(f"                      ##### Input {measurements[0].input_id} #####")
                 model_debug_state = self.dbg_model
-                self.model_debug = True
+                self.dbg_model = True
                 model.trace_test_case([measurements[0].input_], 1)
-                self.model_debug = model_debug_state
+                self.dbg_model = model_debug_state
                 print("\n\n")
 
     # ==============================================================================================
