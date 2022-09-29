@@ -136,7 +136,6 @@ class X86ModelTest(unittest.TestCase):
         model = x86_model.X86UnicornSeq(mem_base, code_base)
         model.tracer = core_model.CTTracer()
         ctraces = self.get_traces(model, ASM_BRANCH_AND_LOAD, [Input()])
-        # print(model.tracer.get_contract_trace_full())
         expected_trace = hash(
             tuple(
                 [code_base + 0x0, code_base + 0x3, code_base + 0x5, mem_base + 0, code_base + 0x8]))
@@ -146,10 +145,14 @@ class X86ModelTest(unittest.TestCase):
         mem_base, code_base = 0x1000000, 0x8000
         model = x86_model.X86UnicornSeq(mem_base, code_base)
         model.tracer = core_model.CTRTracer()
-        ctraces = self.get_traces(model, ASM_BRANCH_AND_LOAD, [Input()])
+        input_ = Input()
+        for i in range(0, 7):
+            input_[input_.register_start + i] = 2
+        ctraces = self.get_traces(model, ASM_BRANCH_AND_LOAD, [input_])
+        # print(model.tracer.get_contract_trace_full())
         expected_trace = hash(
             tuple([
-                0, 0, 0, 0, 0, 0, 0, code_base + 0x0, code_base + 0x3, code_base + 0x5,
+                2, 2, 2, 2, 2, 2, 2, code_base + 0x0, code_base + 0x3, code_base + 0x5,
                 mem_base + 0, code_base + 0x8
             ]))
         self.assertEqual(ctraces, [expected_trace])
@@ -160,10 +163,12 @@ class X86ModelTest(unittest.TestCase):
         model.tracer = core_model.ArchTracer()
         input_ = Input()
         input_[0] = 1
+        for i in range(0, 7):
+            input_[input_.register_start + i] = 2
         ctraces = self.get_traces(model, ASM_BRANCH_AND_LOAD, [input_])
         expected_trace = hash(
             tuple([
-                0, 0, 0, 0, 0, 0, 0, code_base + 0x0, code_base + 0x3, code_base + 0x5, 1,
+                2, 2, 2, 2, 2, 2, 2, code_base + 0x0, code_base + 0x3, code_base + 0x5, 1,
                 mem_base + 0, code_base + 0x8
             ]))
         self.assertEqual(ctraces, [expected_trace])
